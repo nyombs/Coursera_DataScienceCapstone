@@ -81,4 +81,5 @@ getSentiment <- function(matrix) {
     
     documents <- rbind(documents,c(scores$positive,scores$negative,abs(scores$positive/scores$negative),best_fit))
   }
+  return (documents)
 }
