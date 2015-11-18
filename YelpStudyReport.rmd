@@ -1,0 +1,130 @@
+---
+title: "Analysis of Yelp review text to predict user rating"
+author: "Stéphane Nyombayire"
+date: "November 17, 2015"
+output: html_document
+---
+## Introduction
+
+This project aims at analyzing •[Yelp review data set](http://www.yelp.com/dataset_challenge) to understand whether one could infer the rating based on text analysis of the verbatim review text. The rationale behind this study is both an academic exercise on natural language techniques for deriving insights from text, but more importantly this could help Yelp determine the importance of the verbiage provided by the users' review text to assess whether there is an incremental benefit of having the text for rating a business.
+
+## Methods and Data
+
+The dataset used is located •[here](https://www.yelp.com/dataset_challenge/dataset). 
+
+Loading data:
+```{r, echo=TRUE, cache=TRUE,  eval=TRUE}
+rFile = "yelp_academic_dataset_review.json"
+dat <- fromJSON(sprintf("[%s]", paste(readLines(rFile), collapse=",")), flatten = TRUE)
+```
+
+We used the "yelp_academic_dataset_review.json" file. To read-in the file, we first flatten the data structure into a table for further processing. 
+```{r, echo=TRUE, cache=TRUE}
+str(dat)
+```
+Many of the techniques applied require to use a document-term matrix as input. To obtain such matrix we have processed each of the reviews to build a bag of words language model. To create this model we preprocessed each document in the corpus as follows:
+
+  1. Remove non-writable characters.
+  2. Strip extra white spaces.
+  3. Lower case.
+  4. Remove punctuation
+  5. Remove numbers
+  6. Stemming
+  7. Stop words removal.
+
+After that, each text was tokenized into unigrams, and the unigram frequencies were counted and stored into a document-term matrix of counts.This matrix will serve as the base of our modeling and analysis.
+```{r, echo=FALSE, cache=TRUE, warning= FALSE}
+source("Utility.R")
+library("ggplot2")
+library("wordcloud")
+```
+```{r, echo=TRUE, cache=TRUE, warning=FALSE}
+matrix <- getDtm(data$text)
+```
+Code building the matrix is as follow: 
+```{r, echo=FALSE, cache=TRUE, warning= FALSE}
+source("Utility.R")
+data = dat[sample(nrow(dat), 1000), ]
+```
+```{r, echo=TRUE, cache=TRUE, eval= FALSE}
+getDtm <- function(sentences, language="english", 
+                         minDocFreq = 1, minWordLength = 4, 
+                         removeNumbers = TRUE, removePunctuation = TRUE, 
+                         removeStopwords = TRUE, 
+                         stemWords = FALSE, stripWhitespace = TRUE, 
+                         toLower = TRUE, weighting = weightTf) {
+  
+
+  control <- list(language = language, tolower = toLower,
+                  removeNumbers = removeNumbers, removePunctuation = removePunctuation,
+                  stripWhitespace = stripWhitespace, minWordLength = minWordLength,
+                  stopwords = removeStopwords, minDocFreq = minDocFreq, 
+                  weighting = weighting)
+  
+  if (stemWords == TRUE)
+    control <- append(control, list(stemming = process.stemwords), after=6)
+  
+  content <- apply(as.matrix(sentences), 1, paste, collapse=" ")
+  content <- sapply(as.vector(content, mode="character"),
+                  iconv, to="UTF8", sub="byte")
+  
+  corpus <- Corpus(VectorSource(content), readerControl=list(language=language))
+  matrix <- DocumentTermMatrix(corpus,control=control)
+  gc() # garbage collect
+  return(matrix)
+}
+```
+### Exploratory Analysis and Feature Engineering
+
+#### Frequent Terms Classifier
+In order to further understand our data set, let's look at the most frequently used terms using the matrix produced above:
+```{r, echo=TRUE, cache=TRUE, eval= TRUE}
+findFreqTerms(matrix, lowfreq=100)
+```
+
+We noticed that there are words such as: best, nice, love, amazing, better, bad, pretty that are widely used and not too surprising given that these are individual reviews of business. This is already a hint at the need to evaluate sentiment for this feedback. We will get to it later. 
+
+We can also plot word frequencies (we choose at least 300 mentions):
+```{r, echo=TRUE, cache=TRUE, eval= TRUE}
+freq <- sort(colSums(as.matrix(matrix)), decreasing=TRUE)
+wf <- data.frame(word=names(freq), freq=freq)
+ggplot(subset(wf, freq > 300), aes(word, freq)) + geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Alternatively, for better visual consumption we can use a word cloud:
+```{r, echo=TRUE, cache=TRUE, eval= TRUE, warning= FALSE}
+set.seed(123)
+wordcloud(names(freq), freq, min.freq = 50, colors = brewer.pal(6, "Dark2"))
+```
+These terms based on frequency of occurence serve as the basis our initial data set that we will be using for modeling.
+
+### Sentiment Analysis
+Our next strategy with feature engineering would be to infer "sentiment" from each word in our matrix. We will score eac word based on the frequency of usage and as reference for positive, neutral and negative we use the following dictionary:
+```{r, echo=TRUE, cache=TRUE, eval= TRUE, warning= FALSE}
+lexicon <- read.csv("subjectivity.csv", head = FALSE, col.names = c('word', 'polarity', 'sentiment'))
+str(lexicon)
+```
+We will run getSentiment to expand the list of predictors to include the sentiment score as follow:
+```{r, echo=TRUE, cache=TRUE, eval= TRUE, warning= FALSE}
+sentiment = getSentiment(matrix)
+data$pScore = as.numeric(sentiment[, 1])
+data$nScore = as.numeric(sentiment[, 2])
+data$rScore = as.numeric(sentiment[,3])
+data$sentiment = sentiment[, 4]
+```
+Now let's see how the sentiment analysis performed, if we assume negative to postive rating from 1 through 5
+```{r, echo=TRUE, cache=TRUE, eval= TRUE, warning= FALSE}
+plot(prop.table(table(data$stars, data$sentiment ), 1), main = "Distribution of Rating per Sentiment score", xlab = "Rating", ylab = "Sentiment", color = "pink")
+```
+
+### Topic based modeling
+To enhance our features for better modeling, in addition to term frequency and sentiment analysis we will also extract the key topics using Latent Dirichlet Allocation (i.e: LDA) using Gibbs method.
+```{r, echo=TRUE, cache=TRUE, eval= TRUE, warning= FALSE}
+lda <- LDA(matrix, method = "Gibbs", control = list(alpha = 0.3), 7)
+gammaDF <- as.data.frame(lda@gamma)
+names(gammaDF) <- terms(lda)
+df <- cbind(dr, gammaDF)
+```
+## Results
+
+## Discussion

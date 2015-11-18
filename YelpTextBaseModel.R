@@ -8,6 +8,7 @@ require(plyr)
 require(rpart)
 require(e1071)
 # dat_f = YelpSampleReview
+# data = dat_f[sample(nrow(dat_f), 100), ]
 data = YelpSampleReview_100 #YelpSampleReview is 100K
 str(data)
 
