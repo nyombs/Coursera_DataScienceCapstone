@@ -1,0 +1,13 @@
+base
+ggplot2
+RColorBrewer
+wordcloud
+topicmodels
+plyr
+rpart
+e1071
+lattice
+caret
+jsonlite
+NLP
+tm
